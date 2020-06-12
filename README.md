@@ -140,7 +140,7 @@ Features unique to `malabarba/lazy-map`:
 * ClojureScript support
 * Transform Java classes into lazy maps (methods become keys)
 
-Features unique to `thinktopic/lazy-map`:
+Features unique to `com.guaranteedrate/lazy-map`:
 
 * More robust handling of laziness: all possible operations on maps
   are supported correctly (e.g. `seq` and `reduce-kv`)
