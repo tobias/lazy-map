@@ -1,11 +1,8 @@
-# lazy-map
+[![Build Status](https://travis-ci.org/Guaranteed-Rate/lazy-map.svg?branch=master)](https://travis-ci.org/Guaranteed-Rate/lazy-map)
+[![Clojars Project](https://img.shields.io/clojars/v/com.guaranteedrate/lazy-map.svg)](https://clojars.org/com.guaranteedrate/lazy-map)
+[![codecov](https://codecov.io/gh/Guaranteed-Rate/lazy-map/branch/master/graph/badge.svg)](https://codecov.io/gh/Guaranteed-Rate/lazy-map)
 
-> Lazy maps for Clojure
-
-[![Travis build status][travis icon]][travis]
-
-[travis]: https://travis-ci.org/thinktopic/lazy-map
-[travis icon]: https://travis-ci.org/thinktopic/lazy-map.svg?branch=master
+> Maps that satisfy Clojure's map interactions but delay computing their values until the values are accessed.
 
 ## Summary
 
@@ -91,17 +88,12 @@ values with a placeholder. Here is an illustration:
 
 Finally, lazy maps will automatically avoid computing their values
 when they are converted to strings using `str`, `pr-str`, and
-`print-dup`. To accomplish the same for `pprint`, you must use a
-special pretty-print dispatch function:
-
-    user> (pp/with-pprint-dispatch lm/lazy-map-dispatch
-            (pp/pprint (lm/lazy-map {:a (println "lazy")})))
-    {:a <unrealized>}
+`print-dup`.
 
 Check out the [unit tests] for more information on the exact behavior
 of lazy maps.
 
-[unit tests]: src/lazy_map/core_test.clj
+[unit tests](./test/lazy_map/core_test.clj)
 
 ## Organization
 
