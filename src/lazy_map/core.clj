@@ -2,8 +2,7 @@
   "Main namespace, contains utility functions, type definitions, and
   lazy map functions.
 
-  Public API is `->LazyMap`, `->?LazyMap`, `lazy-map`, `force-map`,
-  `freeze-map`, `lazy-map-dispatch`."
+  Public API is `->LazyMap`, `->?LazyMap`, `lazy-map`, `force-map`, `freeze-map`, `merge`, `deep-merge`."
   (:require [clojure.pprint :as pp]
             [clojure.walk :as walk]
             [clojure.set :as sets])
