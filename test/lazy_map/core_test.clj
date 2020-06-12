@@ -176,6 +176,50 @@
     (is (= (count (lazy-map {})) 0))))
 
 
+(deftest laziness-of-nested-maps
+  (let [effects (atom [])
+        !       (fn [x] (swap! effects conj x) x)
+        reset!! (fn [] (reset! effects []))]
+    (testing "nested maps as map values"
+      (let [m (lazy-map {:a {:b (! :c)}})]
+        (is (empty? @effects))
+        (get m :a)
+        (is (empty? @effects))
+        (get-in m [:a :b])
+        (is (= [:c] @effects)))
+      (reset!!))
+
+    (testing "nested maps within vectors"
+      (let [m (lazy-map {:a [{:b (! :c)}]})]
+        (is (empty? @effects))
+        (get m :a)
+        (is (empty? @effects))
+        (get-in m [:a 0])
+        (is (empty? @effects))
+        (get-in m [:a 0 :b])
+        (is (= [:c] @effects)))
+      (reset!!))
+
+    (testing "nested maps within sets"
+      (let [m (lazy-map {:a #{{:b (! :c)}}})]
+        (is (empty? @effects))
+        (-> m :a)
+        (is (empty? @effects))
+        (-> m :a first)
+        (is (empty? @effects))
+        (-> m :a first :b)
+        (is (= [:c] @effects)))
+      (reset!!))
+
+    (testing "nested maps within function calls"
+      (let [m (lazy-map {:a (do {:b (! :c)})})]
+        (is (empty? @effects))
+        (-> m :a)
+        (is (empty? @effects))
+        (-> m :a :b)
+        (is (= [:c] @effects)))
+      (reset!!))))
+
 (deftest merge-test
   (let [effects (atom [])
         !       (fn [x] (swap! effects conj x) x)

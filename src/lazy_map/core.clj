@@ -13,7 +13,7 @@
                          IPersistentCollection IMapIterable
                          ILookup IKVReduce IFn Associative
                          Sequential Reversible IPersistentVector
-                         IPersistentStack Indexed IMapEntry IHashEq MapEntry)
+                         IPersistentStack Indexed IMapEntry IHashEq MapEntry IPersistentSet IPersistentList)
            (java.io Serializable))
   (:refer-clojure :exclude (merge)))
 
@@ -268,6 +268,20 @@
 
 (extend-print LazyMap #(.toString ^LazyMap %))
 
+(defmethod pp/simple-dispatch lazy_map.core.LazyMap [obj]
+  (pp/simple-dispatch (freeze-map (->PlaceholderText "<unrealized>") obj)))
+
+(defmethod pp/simple-dispatch lazy_map.core.LazyMapEntry [obj]
+  (pp/simple-dispatch
+    (let [raw-value (.val_ obj)]
+      (map-entry (key obj) (if (and (delay? raw-value)
+                                    (not (realized? raw-value)))
+                             (->PlaceholderText "<unrealized>")
+                             (force raw-value))))))
+
+(defmethod pp/simple-dispatch lazy_map.core.PlaceholderText [obj]
+  (pr obj))
+
 ;;;; Functions for working with lazy maps
 
 (defn ->?LazyMap
@@ -288,9 +302,18 @@
   Object
   (rewrite [form]
     form)
-  IMapEntry
+  MapEntry
   (rewrite [[k v]]
     [(rewrite k) `(delay ~(rewrite v))])
+  IPersistentList
+  (rewrite [form]
+    (map rewrite form))
+  IPersistentSet
+  (rewrite [form]
+    (into #{} (map rewrite) form))
+  IPersistentVector
+  (rewrite [form]
+    (into [] (map rewrite) form))
   Map
   (rewrite [form]
     `(->LazyMap (hash-map ~@(mapcat rewrite form)))))
@@ -365,25 +388,3 @@
     (->> (sets/union (keys m1) (keys m2))
          (into {} (map (fn [k] [k (delay (value k))])))
          (->LazyMap))))
-
-
-(defonce _init
-  (when-not *compile-files*
-    (alter-var-root #'pp/*print-pprint-dispatch*
-      (fn [old]
-        (let [dispatch (or old pp/simple-dispatch)]
-          (fn [obj]
-            (cond
-              (instance? LazyMap obj)
-              (dispatch (freeze-map (->PlaceholderText "<unrealized>") obj))
-              (instance? LazyMapEntry obj)
-              (dispatch
-                (let [raw-value (.val_ obj)]
-                  (assoc obj 1 (if (and (delay? raw-value)
-                                        (not (realized? raw-value)))
-                                 (->PlaceholderText "<unrealized>")
-                                 (force raw-value)))))
-              (instance? PlaceholderText obj)
-              (pr obj)
-              :else
-              (dispatch obj))))))))
