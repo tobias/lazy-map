@@ -124,11 +124,6 @@ when they are converted to strings using `str`, `pr-str`, and
 `print-dup`. Please see the [unit tests](./test/lazy_map/core_test.clj) 
 for more examples of the exact behavior of lazy maps.
 
-## Organization
-
-All the code is currently in the `lazy-map.core` namespace, and the
-unit tests are in the `lazy-map.core-test` namespace.
-
 ## See also
 
 **[Malabarba's implementation] of lazy maps in Clojure.**
