@@ -174,3 +174,47 @@
     (is (empty? (keys (lazy-map {}))))
     (is (empty? (vals (lazy-map {}))))
     (is (= (count (lazy-map {})) 0))))
+
+
+(deftest merge-test
+  (let [effects (atom [])
+        !       (fn [x] (swap! effects conj x) x)
+        m1      (lazy-map {:a (! :a1) :b (! :b1)})
+        m2      (lazy-map {:a (! :a2) :c (! :c2)})
+        merged  (merge m1 m2)]
+    (is (empty? @effects))
+    (is (= :a2 (get merged :a)))
+    (is (= [:a2] @effects))
+    (is (= :b1 (get merged :b)))
+    (is (= [:a2 :b1] @effects))
+    (is (= :c2 (get merged :c)))
+    (is (= [:a2 :b1 :c2] @effects))))
+
+(deftest deep-merge-test
+  (testing "simple deep merge"
+    (let [effects (atom [])
+          !       (fn [x] (swap! effects conj x) x)
+          m1      (lazy-map {:a (! :a1) :b (! :b1)})
+          m2      (lazy-map {:a (! :a2) :c (! :c2)})
+          merged  (deep-merge m1 m2)]
+      (is (empty? @effects))
+      (is (= :a2 (get merged :a)))
+      (is (= [:a2] @effects))
+      (is (= :b1 (get merged :b)))
+      (is (= [:a2 :b1] @effects))
+      (is (= :c2 (get merged :c)))
+      (is (= [:a2 :b1 :c2] @effects))))
+
+  (testing "nested deep merge"
+    (let [effects (atom [])
+          !       (fn [x] (swap! effects conj x) x)
+          m1      (lazy-map {:a (! :a1) :b {:c (! :c1) :d (! :d1)}})
+          m2      (lazy-map {:a (! :a2) :b {:c (! :c2) :e (! :e2)}})
+          merged  (deep-merge m1 m2)]
+      (is (empty? @effects))
+      (is (= :a2 (get merged :a)))
+      (is (= [:a2] @effects))
+      (is (= :c2 (get-in merged [:b :c])))
+      (is (= [:a2 :c2] @effects))
+      (is (= :d1 (get-in merged [:b :d])))
+      (is (= [:a2 :c2 :d1] @effects)))))
