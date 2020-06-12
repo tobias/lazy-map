@@ -17,4 +17,4 @@
   [[lein-cloverage "1.1.2"]]
 
   :deploy-repositories
-  [["releases" "https://clojars.org/repo"]])
+  {"releases" {:url "https://repo.clojars.org" :creds :gpg}})
