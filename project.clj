@@ -14,4 +14,7 @@
   [[org.clojure/clojure "1.10.1"]]
 
   :plugins
-  [[lein-cloverage "1.1.2"]])
+  [[lein-cloverage "1.1.2"]]
+
+  :deploy-repositories
+  [["releases" "https://clojars.org/repo"]])
