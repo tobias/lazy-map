@@ -2,7 +2,8 @@
   (:require [lazy-map.core :refer :all]
             [clojure.test :refer :all]
             [clojure.pprint :as pp])
-  (:import [lazy_map.core LazyMap]))
+  (:import [lazy_map.core LazyMap])
+  (:refer-clojure :exclude (merge)))
 
 (defmacro error
   [& [msg]]
@@ -10,20 +11,6 @@
      (throw (if msg#
               (AssertionError. msg#)
               (AssertionError.)))))
-
-(deftest map-keys-test
-  (is (= (map-keys name {:a 1 :b 2})
-         {"a" 1 "b" 2}))
-  (is (= (map-keys inc {1 2 3 4})
-         {2 2 4 4}))
-  (is (= (map-keys #(error "key fn should not be called") {})
-         {})))
-
-(deftest map-vals-test
-  (is (= (map-vals dec {:a 1 :b 2})
-         {:a 0 :b 1}))
-  (is (= (map-vals #(cons 0 %) {[1 2] [3 4] [5 6] [7 8]})
-         {[1 2] [0 3 4] [5 6] [0 7 8]})))
 
 (deftest map-entry-test
   (is (= (key (map-entry :a :b)) :a))
@@ -61,23 +48,23 @@
                   {:a (delay (println "value :a was realized"))
                    :b (delay (println "value :b was realized"))
                    :c (delay (println "value :c was realized"))})
-             (vals)
-             (take 2)
-             (dorun)
-             (with-out-str)
-             (re-seq #"value :[a-c] was realized")
-             (count))
+                (vals)
+                (take 2)
+                (dorun)
+                (with-out-str)
+                (re-seq #"value :[a-c] was realized")
+                (count))
            2)))
   (testing "assoc and dissoc work with lazy maps"
     (is (= (-> (make-lazy-map)
-             (assoc :d (delay (error "value :d should not be realized")))
-             (keys)
-             (set))
+               (assoc :d (delay (error "value :d should not be realized")))
+               (keys)
+               (set))
            #{:a :b :c :d}))
     (is (= (-> (make-lazy-map)
-             (dissoc :a :b)
-             (keys)
-             (set))
+               (dissoc :a :b)
+               (keys)
+               (set))
            #{:c})))
   (testing "lazy maps support default value for lookup"
     (is (= (:d (make-lazy-map) :default)
@@ -121,11 +108,9 @@
     (is (= (pr-str (->LazyMap {:a (delay 1)}))
            "{:a <unrealized>}")))
   (testing "pprint representation of lazy maps"
-    (is (= (with-out-str (pp/with-pprint-dispatch lazy-map-dispatch
-                           (pp/pprint (->LazyMap {:a 1}))))
+    (is (= (with-out-str (pp/pprint (->LazyMap {:a 1})))
            (format "{:a 1}%n")))
-    (is (= (with-out-str (pp/with-pprint-dispatch lazy-map-dispatch
-                           (pp/pprint (->LazyMap {:a (delay 1)}))))
+    (is (= (with-out-str (pp/pprint (->LazyMap {:a (delay 1)})))
            (format "{:a <unrealized>}%n"))))
   (testing "str representation of lazy map entries"
     (is (= (str (lazy-map-entry :a 1))
@@ -138,11 +123,9 @@
     (is (= (pr-str (lazy-map-entry :a (delay 1)))
            "[:a <unrealized>]")))
   (testing "pprint representation of lazy map entries"
-    (is (= (with-out-str (pp/with-pprint-dispatch lazy-map-dispatch
-                           (pp/pprint (lazy-map-entry :a 1))))
+    (is (= (with-out-str (pp/pprint (lazy-map-entry :a 1)))
            (format "[:a 1]%n")))
-    (is (= (with-out-str (pp/with-pprint-dispatch lazy-map-dispatch
-                           (pp/pprint (lazy-map-entry :a (delay 1)))))
+    (is (= (with-out-str (pp/pprint (lazy-map-entry :a (delay 1))))
            (format "[:a <unrealized>]%n"))))
   (testing "->?LazyMap function"
     (is (= (:b (make-lazy-map ->?LazyMap))
@@ -163,19 +146,119 @@
     (is (= (->> (lazy-map
                   {:a (println "value :a was realized")
                    :b (println "value :b was realized")})
-             (force-map)
-             (with-out-str)
-             (re-seq #"value :[ab] was realized")
-             (set))
+                (force-map)
+                (with-out-str)
+                (re-seq #"value :[ab] was realized")
+                (set))
            #{"value :a was realized" "value :b was realized"})))
   (testing "freezing a lazy map"
     (= (->> (make-lazy-map)
-         (freeze-map :foo))
+            (freeze-map :foo))
        {:a :foo
         :b 50
         :c :foo})
     (= (->> (make-lazy-map)
-         (freeze-map name))
+            (freeze-map name))
        {:a "a"
         :b 50
-        :c "c"})))
+        :c "c"}))
+  (testing "keyIterator and valIterator"
+    (is (= false (.hasNext (.keyIterator (lazy-map {})))))
+    (is (= true (.hasNext (.keyIterator (lazy-map {:a 1})))))
+    (is (= :a (.next (.keyIterator (lazy-map {:a 1})))))
+    (is (= :a (.next (.keyIterator (lazy-map {:a 1})))))
+    (is (= false (.hasNext (.valIterator (lazy-map {})))))
+    (is (= true (.hasNext (.valIterator (lazy-map {:a 1})))))
+    (is (= 1 (.next (.valIterator (lazy-map {:a 1}))))))
+  (testing "empty maps"
+    (is (empty? (keys (lazy-map {}))))
+    (is (empty? (vals (lazy-map {}))))
+    (is (= (count (lazy-map {})) 0))))
+
+
+(deftest laziness-of-nested-maps
+  (let [effects (atom [])
+        !       (fn [x] (swap! effects conj x) x)
+        reset!! (fn [] (reset! effects []))]
+    (testing "nested maps as map values"
+      (let [m (lazy-map {:a {:b (! :c)}})]
+        (is (empty? @effects))
+        (get m :a)
+        (is (empty? @effects))
+        (get-in m [:a :b])
+        (is (= [:c] @effects)))
+      (reset!!))
+
+    (testing "nested maps within vectors"
+      (let [m (lazy-map {:a [{:b (! :c)}]})]
+        (is (empty? @effects))
+        (get m :a)
+        (is (empty? @effects))
+        (get-in m [:a 0])
+        (is (empty? @effects))
+        (get-in m [:a 0 :b])
+        (is (= [:c] @effects)))
+      (reset!!))
+
+    (testing "nested maps within sets"
+      (let [m (lazy-map {:a #{{:b (! :c)}}})]
+        (is (empty? @effects))
+        (-> m :a)
+        (is (empty? @effects))
+        (-> m :a first)
+        (is (empty? @effects))
+        (-> m :a first :b)
+        (is (= [:c] @effects)))
+      (reset!!))
+
+    (testing "nested maps within function calls"
+      (let [m (lazy-map {:a (do {:b (! :c)})})]
+        (is (empty? @effects))
+        (-> m :a)
+        (is (empty? @effects))
+        (-> m :a :b)
+        (is (= [:c] @effects)))
+      (reset!!))))
+
+(deftest merge-test
+  (let [effects (atom [])
+        !       (fn [x] (swap! effects conj x) x)
+        m1      (lazy-map {:a (! :a1) :b (! :b1)})
+        m2      (lazy-map {:a (! :a2) :c (! :c2)})
+        merged  (merge m1 m2)]
+    (is (empty? @effects))
+    (is (= :a2 (get merged :a)))
+    (is (= [:a2] @effects))
+    (is (= :b1 (get merged :b)))
+    (is (= [:a2 :b1] @effects))
+    (is (= :c2 (get merged :c)))
+    (is (= [:a2 :b1 :c2] @effects))))
+
+(deftest deep-merge-test
+  (testing "simple deep merge"
+    (let [effects (atom [])
+          !       (fn [x] (swap! effects conj x) x)
+          m1      (lazy-map {:a (! :a1) :b (! :b1)})
+          m2      (lazy-map {:a (! :a2) :c (! :c2)})
+          merged  (deep-merge m1 m2)]
+      (is (empty? @effects))
+      (is (= :a2 (get merged :a)))
+      (is (= [:a2] @effects))
+      (is (= :b1 (get merged :b)))
+      (is (= [:a2 :b1] @effects))
+      (is (= :c2 (get merged :c)))
+      (is (= [:a2 :b1 :c2] @effects))))
+
+  (testing "nested deep merge"
+    (let [effects (atom [])
+          !       (fn [x] (swap! effects conj x) x)
+          m1      (lazy-map {:a (! :a1) :b {:c (! :c1) :d (! :d1)}})
+          m2      (lazy-map {:a (! :a2) :b {:c (! :c2) :e (! :e2)}})
+          merged  (deep-merge m1 m2)]
+      (is (empty? @effects))
+      (is (= :a2 (get merged :a)))
+      (is (= [:a2] @effects))
+      (is (= :c2 (get-in merged [:b :c])))
+      (is (= [:a2 :c2] @effects))
+      (is (= :d1 (get-in merged [:b :d])))
+      (is (= [:a2 :c2 :d1] @effects)))))

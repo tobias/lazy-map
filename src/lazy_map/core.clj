@@ -4,19 +4,20 @@
 
   Public API is `->LazyMap`, `->?LazyMap`, `lazy-map`, `force-map`,
   `freeze-map`, `lazy-map-dispatch`."
-  (:require [clojure
-             [pprint :as pp]
-             [string :as str]])
-  (:import java.io.Writer))
+  (:require [clojure.pprint :as pp]
+            [clojure.walk :as walk]
+            [clojure.set :as sets])
+  (:import java.io.Writer
+           (java.util Map RandomAccess Map$Entry)
+           (clojure.lang Seqable IPersistentMap
+                         IPersistentCollection IMapIterable
+                         ILookup IKVReduce IFn Associative
+                         Sequential Reversible IPersistentVector
+                         IPersistentStack Indexed IMapEntry IHashEq MapEntry IPersistentSet IPersistentList)
+           (java.io Serializable))
+  (:refer-clojure :exclude (merge)))
 
 ;;;; Utility functions
-
-(defmacro is-not-thrown?
-  "Used in clojure.test assertions because (is (not (thrown? ...)))
-  doesn't work. See http://acidwords.com/posts/2015-07-23-fixing-negation-in-clojure-test.html"
-  [e expr]
-  {:style/indent 1}
-  `(is (not ('thrown? ~e ~expr))))
 
 (defmacro extend-print
   "Convenience macro for overriding the string representation of a
@@ -40,23 +41,7 @@
   "Creates a map entry (as returned by calling seq on a map) with the
   given key and value."
   [k v]
-  (clojure.lang.MapEntry/create k v))
-
-(defn map-keys
-  "Applies f to each of the keys of a map, returning a new map."
-  [f map]
-  (reduce-kv (fn [m k v]
-               (assoc m (f k) v))
-             {}
-             map))
-
-(defn map-vals
-  "Applies f to each of the values of a map, returning a new map."
-  [f map]
-  (reduce-kv (fn [m k v]
-               (assoc m k (f v)))
-             {}
-             map))
+  (MapEntry/create k v))
 
 ;;;; PlaceholderText type
 
@@ -68,7 +53,7 @@
 
 (deftype LazyMapEntry [key_ val_]
 
-  clojure.lang.Associative
+  Associative
   (containsKey [this k]
     (boolean (#{0 1} k)))
   (entryAt [this k]
@@ -83,17 +68,17 @@
       (= k 2) (vector k (force val_) v)
       :else (throw (IndexOutOfBoundsException.))))
 
-  clojure.lang.IFn
+  IFn
   (invoke [this k]
     (.valAt this k))
 
-  clojure.lang.IHashEq
+  IHashEq
   (hasheq [this]
     (.hasheq
-      ^clojure.lang.IHashEq
+      ^IHashEq
       (vector key_ (force val_))))
 
-  clojure.lang.ILookup
+  ILookup
   (valAt [this k]
     (cond
       (= k 0) key_
@@ -105,11 +90,11 @@
       (= k 1) (force val_)
       :else not-found))
 
-  clojure.lang.IMapEntry
+  IMapEntry
   (key [this] key_)
   (val [this] (force val_))
 
-  clojure.lang.Indexed
+  Indexed
   (nth [this i]
     (cond
       (= i 0) key_
@@ -122,7 +107,7 @@
       (.nth this i)
       (catch Exception _ not-found)))
 
-  clojure.lang.IPersistentCollection
+  IPersistentCollection
   (count [this] 2)
   (empty [this] false)
   (equiv [this o]
@@ -130,52 +115,52 @@
       [key_ (force val_)]
       o))
 
-  clojure.lang.IPersistentStack
+  IPersistentStack
   (peek [this] (force val_))
   (pop [this] [key_])
 
-  clojure.lang.IPersistentVector
+  IPersistentVector
   (assocN [this i v]
     (.assocN [key_ (force val_)] i v))
   (cons [this o]
     (.cons [key_ (force val_)] o))
 
-  clojure.lang.Reversible
+  Reversible
   (rseq [this] (lazy-seq (list (force val_) key_)))
 
-  clojure.lang.Seqable
+  Seqable
   (seq [this]
     (cons key_ (lazy-seq (list (force val_)))))
 
-  clojure.lang.Sequential
+  Sequential
 
-  java.io.Serializable
+  Serializable
 
-  java.lang.Comparable
+  Comparable
   (compareTo [this o]
     (.compareTo
-      ^java.lang.Comparable
+      ^Comparable
       (vector key_ (force val_))
       o))
 
-  java.lang.Iterable
+  Iterable
   (iterator [this]
     (.iterator
-      ^java.lang.Iterable
+      ^Iterable
       (.seq this)))
 
-  java.lang.Object
+  Object
   (toString [this]
     (str [key_ (if (and (delay? val_)
                         (not (realized? val_)))
                  (->PlaceholderText "<unrealized>")
                  (force val_))]))
 
-  java.util.Map$Entry
+  Map$Entry
   (getKey [this] key_)
   (getValue [this] (force val_))
 
-  java.util.RandomAccess)
+  RandomAccess)
 
 (defn lazy-map-entry
   "Construct a lazy map entry with the given key and value. If you
@@ -194,9 +179,9 @@
 ;; deftype.
 (declare freeze-map)
 
-(deftype LazyMap [^clojure.lang.IPersistentMap contents]
+(deftype LazyMap [^IPersistentMap contents]
 
-  clojure.lang.Associative
+  Associative
   (containsKey [this k]
     (and contents
          (.containsKey contents k)))
@@ -204,17 +189,17 @@
     (and contents
          (lazy-map-entry k (.valAt contents k))))
 
-  clojure.lang.IFn
+  IFn
   (invoke [this k]
     (.valAt this k))
   (invoke [this k not-found]
     (.valAt this k not-found))
 
-  clojure.lang.IKVReduce
+  IKVReduce
   (kvreduce [this f init]
     (reduce-kv f init (into {} this)))
 
-  clojure.lang.ILookup
+  ILookup
   (valAt [this k]
     (and contents
          (force (.valAt contents k))))
@@ -224,21 +209,21 @@
     (and contents
          (force (.valAt contents k not-found))))
 
-  clojure.lang.IMapIterable
+  IMapIterable
   (keyIterator [this]
     (.iterator
-      ^java.lang.Iterable
-      (keys contents)))
+      ^Iterable
+      (or (keys contents) ())))
   (valIterator [this]
     (.iterator
       ;; Using the higher-arity form of map prevents chunking.
-      ^java.lang.Iterable
+      ^Iterable
       (map (fn [[k v] _]
              (force v))
            contents
            (repeat nil))))
 
-  clojure.lang.IPersistentCollection
+  IPersistentCollection
   (count [this]
     (if contents
       (.count contents)
@@ -250,30 +235,29 @@
     (LazyMap. (.cons (or contents {}) o)))
   (equiv [this o]
     (.equiv
-      ^clojure.lang.IPersistentCollection
+      ^IPersistentCollection
       (into {} this) o))
 
-  clojure.lang.IPersistentMap
+  IPersistentMap
   (assoc [this key val]
     (LazyMap. (.assoc (or contents {}) key val)))
   (without [this key]
     (LazyMap. (.without (or contents {}) key)))
 
-  clojure.lang.Seqable
+  Seqable
   (seq [this]
     ;; Using the higher-arity form of map prevents chunking.
-    (map (fn [[k v] _]
-           (lazy-map-entry k v))
-         contents
-         (repeat nil)))
+    (seq
+      (map (fn [[k v] _]
+             (lazy-map-entry k v))
+           contents
+           (repeat nil))))
 
-  java.lang.Iterable
+  Iterable
   (iterator [this]
-    (.iterator
-      ^java.lang.Iterable
-      (.seq this)))
+    (.iterator ^Iterable (.seq this)))
 
-  java.lang.Object
+  Object
   (toString [this]
     (str (freeze-map (->PlaceholderText "<unrealized>") this))))
 
@@ -283,6 +267,20 @@
   are interpreted as values that have yet to be realized.")
 
 (extend-print LazyMap #(.toString ^LazyMap %))
+
+(defmethod pp/simple-dispatch lazy_map.core.LazyMap [obj]
+  (pp/simple-dispatch (freeze-map (->PlaceholderText "<unrealized>") obj)))
+
+(defmethod pp/simple-dispatch lazy_map.core.LazyMapEntry [obj]
+  (pp/simple-dispatch
+    (let [raw-value (.val_ obj)]
+      (map-entry (key obj) (if (and (delay? raw-value)
+                                    (not (realized? raw-value)))
+                             (->PlaceholderText "<unrealized>")
+                             (force raw-value))))))
+
+(defmethod pp/simple-dispatch lazy_map.core.PlaceholderText [obj]
+  (pr obj))
 
 ;;;; Functions for working with lazy maps
 
@@ -296,21 +294,48 @@
     map
     (->LazyMap map)))
 
+(defprotocol LazyRewrite
+  (rewrite [form]
+    "Rewrites form into a lazy construct."))
+
+(extend-protocol LazyRewrite
+  Object
+  (rewrite [form]
+    form)
+  MapEntry
+  (rewrite [[k v]]
+    [(rewrite k) `(delay ~(rewrite v))])
+  IPersistentList
+  (rewrite [form]
+    (map rewrite form))
+  IPersistentSet
+  (rewrite [form]
+    (into #{} (map rewrite) form))
+  IPersistentVector
+  (rewrite [form]
+    (into [] (map rewrite) form))
+  Map
+  (rewrite [form]
+    `(->LazyMap (hash-map ~@(mapcat rewrite form)))))
+
+
 (defmacro lazy-map
   "Constructs a lazy map from a literal map. None of the values are
-  evaluated until they are accessed from the map."
-  [map]
-  `(->LazyMap
-     ~(->> map
-        (apply concat)
-        (partition 2)
-        (clojure.core/map (fn [[k v]] [k `(delay ~v)]))
-        (into {}))))
+  evaluated until they are accessed from the map. Recursively converts
+  any nested inline maps as well."
+  [form]
+  (rewrite form))
+
 
 (defn force-map
   "Realizes all the values in a lazy map, returning a regular map."
   [map]
-  (into {} map))
+  (walk/postwalk
+    (fn [form]
+      (if (map? form)
+        (into {} form)
+        form))
+    map))
 
 (defn freeze-map
   "Replace all the unrealized values in a lazy map with placeholders,
@@ -329,21 +354,37 @@
                {}
                (.contents ^LazyMap map))))
 
-(defn lazy-map-dispatch
-  "This is a dispatch function for clojure.pprint that prints
-  lazy maps without forcing them."
-  [obj]
-  (cond
-    (instance? LazyMap obj)
-    (pp/simple-dispatch (freeze-map (->PlaceholderText "<unrealized>") obj))
-    (instance? LazyMapEntry obj)
-    (pp/simple-dispatch
-      (let [raw-value (.val_ obj)]
-        (assoc obj 1 (if (and (delay? raw-value)
-                              (not (realized? raw-value)))
-                       (->PlaceholderText "<unrealized>")
-                       (force raw-value)))))
-    (instance? PlaceholderText obj)
-    (pr obj)
-    :else
-    (pp/simple-dispatch obj)))
+
+(defn merge
+  "Merges two lazy maps. Preserves laziness of value access."
+  [m1 m2]
+  (letfn [(value [k]
+            (case [(contains? m1 k) (contains? m2 k)]
+              [true true] (if-some [v (get m2 k)] v (get m1 k))
+              [true false] (get m1 k)
+              [false true] (get m2 k)
+              [false false] nil))]
+    (->> (sets/union (keys m1) (keys m2))
+         (into {} (map (fn [k] [k (delay (value k))])))
+         (->LazyMap))))
+
+
+(defn deep-merge
+  "Deep merges two lazy maps. Preserves laziness of value access."
+  [m1 m2]
+  (letfn [(value [k]
+            (case [(contains? m1 k) (contains? m2 k)]
+              [true true] (if-some [m2v (get m2 k)]
+                            (if (map? m2v)
+                              (let [m1v (get m1 k)]
+                                (if (map? m1v)
+                                  (deep-merge m1v m2v)
+                                  m2v))
+                              m2v)
+                            (get m1 k))
+              [true false] (get m1 k)
+              [false true] (get m2 k)
+              [false false] nil))]
+    (->> (sets/union (keys m1) (keys m2))
+         (into {} (map (fn [k] [k (delay (value k))])))
+         (->LazyMap))))
