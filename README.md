@@ -121,11 +121,8 @@ placeholder. Here is an illustration:
 
 Finally, lazy maps will automatically avoid computing their values
 when they are converted to strings using `str`, `pr-str`, and
-`print-dup`.
-
-Check out the [unit tests] for more information on the exact behavior of lazy maps.
-
-[unit tests](./test/lazy_map/core_test.clj)
+`print-dup`. Please see the [unit tests](./test/lazy_map/core_test.clj) 
+for more examples of the exact behavior of lazy maps.
 
 ## Organization
 
