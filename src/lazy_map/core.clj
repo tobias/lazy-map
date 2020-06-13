@@ -9,7 +9,7 @@
                          IPersistentCollection IMapIterable
                          ILookup IKVReduce IFn Associative
                          Sequential Reversible IPersistentVector
-                         IPersistentStack Indexed IMapEntry IHashEq MapEntry IPersistentSet IPersistentList APersistentMap$KeySeq PersistentList)
+                         IPersistentStack Indexed IMapEntry IHashEq MapEntry IPersistentSet IPersistentList APersistentMap$KeySeq PersistentList MapEquivalence APersistentMap)
            (java.io Serializable))
   (:refer-clojure :exclude (merge)))
 
@@ -179,13 +179,49 @@
 
 (deftype LazyMap [^IPersistentMap contents]
 
+  Map
+  (size [this]
+    (count contents))
+
+  (isEmpty [this]
+    (empty? contents))
+
+  (containsValue [this value]
+    (let [entries
+          (reduce-kv
+            (fn [agg k v]
+              (if (or (not (delay? v)) (realized? v))
+                (update agg true conj (force v))
+                (update agg false conj v)))
+            {true #{} false []}
+            contents)]
+      ; check realized values first so we don't unnecessarily realize more
+      (or (contains? (get entries true) value)
+          (loop [[item :as items] (get entries false [])]
+            (if (empty? items)
+              false
+              (if (= (force item) value)
+                true
+                (recur (rest items))))))))
+
+  (get [this key]
+    (.valAt this key))
+
+  (keySet [this]
+    (set (keys contents)))
+
+  (values [this]
+    (map force (vals contents)))
+
+  (entrySet [this]
+    (reduce-kv #(conj %1 (lazy-map-entry %2 %3)) #{} contents))
+
   Associative
   (containsKey [this k]
-    (and contents
-         (.containsKey contents k)))
+    (.containsKey contents k))
+
   (entryAt [this k]
-    (and contents
-         (lazy-map-entry k (.valAt contents k))))
+    (lazy-map-entry k (.valAt contents k)))
 
   IFn
   (invoke [this k]
@@ -199,17 +235,16 @@
 
   ILookup
   (valAt [this k]
-    (and contents
-         (force (.valAt contents k))))
+    (force (.valAt contents k)))
+
   (valAt [this k not-found]
-    ;; This will not behave properly if not-found is a Delay,
-    ;; but that's a pretty obscure edge case.
-    (and contents
-         (force (.valAt contents k not-found))))
+    (let [sentinel (Object.)
+          value    (.valAt contents k sentinel)]
+      (if (identical? value sentinel) not-found (force value))))
 
   IMapIterable
   (keyIterator [this]
-    (if-some [key-seq ^APersistentMap$KeySeq (keys (or contents {}))]
+    (if-some [key-seq ^APersistentMap$KeySeq (keys contents)]
       (.iterator key-seq)
       (.iterator PersistentList/EMPTY)))
 
@@ -224,23 +259,20 @@
 
   IPersistentCollection
   (count [this]
-    (if contents
-      (.count contents)
-      0))
+    (.count contents))
   (empty [this]
-    (LazyMap. (.empty (or contents {}))))
+    (LazyMap. (.empty contents)))
   (cons [this o]
-    (LazyMap. (.cons (or contents {}) o)))
+    (LazyMap. (.cons contents o)))
   (equiv [this o]
-    (.equiv
-      ^IPersistentCollection
-      (into {} this) o))
+    (.equiv ^IPersistentMap (into {} this) o))
 
   IPersistentMap
   (assoc [this key val]
-    (LazyMap. (.assoc (or contents {}) key val)))
+    (LazyMap. (.assoc contents key val)))
+
   (without [this key]
-    (LazyMap. (.without (or contents {}) key)))
+    (LazyMap. (.without contents key)))
 
   Seqable
   (seq [this]
@@ -255,7 +287,12 @@
   (iterator [this]
     (.iterator ^Iterable (.seq this)))
 
+  MapEquivalence
+
   Object
+  (equals [this that]
+    (APersistentMap/mapEquals this that))
+
   (toString [this]
     (str (freeze-map (->PlaceholderText "<unrealized>") this))))
 

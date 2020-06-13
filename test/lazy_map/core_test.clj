@@ -2,7 +2,8 @@
   (:require [lazy-map.core :refer :all]
             [clojure.test :refer :all]
             [clojure.pprint :as pp])
-  (:refer-clojure :exclude (merge)))
+  (:refer-clojure :exclude (merge))
+  (:import (java.util Map)))
 
 (defmacro error
   [& [msg]]
@@ -220,6 +221,48 @@
         (is (= [:c] @effects)))
       (reset!!))))
 
+(deftest contains-value-doesnt-realize-unnecessarily
+  (let [effects (atom [])
+        !       (fn [x] (swap! effects conj x) x)
+        m       (literal->lazy-map {:a :b :c (! :d)})]
+    (is (empty? @effects))
+    (is (.containsValue ^Map m :b))
+    (is (empty? @effects))
+    (is (.containsValue ^Map m :d))
+    (is (= [:d] @effects))))
+
+(deftest type-compliance
+  (testing "is a java map"
+    (is (instance? java.util.Map (lazy-map {:a (delay :b)}))))
+
+  (testing "map methods"
+    (is (= :b (.get (lazy-map {:a (delay :b)}) :a)))
+    (is (.containsKey ^Map (lazy-map {:a (delay :b)}) :a))
+    (is (= 0 (.size (lazy-map {}))))
+    (is (= 1 (.size (lazy-map {:a :b}))))
+    (is (.isEmpty (lazy-map {})))
+    (is (not (.isEmpty (lazy-map {:a :b}))))
+    (is (= #{:a} (.keySet (lazy-map {:a :b}))))
+    (is (= #{(map-entry :a :b)} (.entrySet (lazy-map {:a :b}))))
+    (is (= #{(map-entry :a :b)} (.entrySet (lazy-map {:a (delay :b)})))))
+
+  (testing "equality between entry types when values are realized"
+    (is (= (first {:a :b}) (first (lazy-map {:a :b}))))
+    (is (not= (first {:a :b}) (first (lazy-map {:a :c})))))
+
+  (testing "equality between entry types - realizes unrealized values"
+    (is (= (first {:a 10}) (lazy-map-entry :a (delay (+ 1 2 3 4)))))
+    (is (not= (first {:a 10}) (lazy-map-entry :a (delay (+ 1 2 3 4 5))))))
+
+  (testing "equality between map types when values are realized"
+    (is (= {:a :b} (lazy-map {:a :b})))
+    (is (not= {:a :b} (lazy-map {:a :c}))))
+
+  (testing "equality between map types - realizes unrealized values"
+    (is (= {:a 10} (lazy-map {:a (delay (+ 1 2 3 4))})))
+    (is (not= {:a 10} (lazy-map {:a (delay (+ 1 2 3 4 5))})))))
+
+
 (deftest merge-test
   (testing "simple merge"
     (let [effects (atom [])
@@ -283,8 +326,8 @@
   (testing "preservation of already realized values"
     (let [effects (atom [])
           !       (fn [x] (swap! effects conj x) x)
-          a       (literal->lazy-map {:a :a1 :b (! :b1)})
-          b       (literal->lazy-map {:b :b2})
+          a       (literal->lazy-map {:a :a1 :b (! :b1) :c :c1 :d (! {:g :g1 :e :e1})})
+          b       (literal->lazy-map {:b :b2 :c :c2 :d {:e :e2}})
           merged  (deep-merge a b)]
       (is (empty? @effects))
       (is (not (realized-at? a :b)))
@@ -294,4 +337,9 @@
       (is (empty? @effects))
       (is (realized-at? merged :b))
       (is (= :b2 (get merged :b)))
-      (is (empty? @effects)))))
+      (is (empty? @effects))
+      (is (= :c2 (get merged :c)))
+      (is (empty? @effects))
+      (is (= :e2 (get-in merged [:d :e])))
+      (is (= [{:g :g1 :e :e1}] @effects))
+      (is (= :g1 (get-in merged [:d :g]))))))
