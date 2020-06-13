@@ -20,11 +20,11 @@ Start by requiring the namespace:
 
 ```
 
-You can then construct a lazy map using the `lazy-map` macro.
+You can then construct a lazy map using the `literal->lazy-map` macro.
 
 ```clojure 
 
-(def m (lm/lazy-map 
+(def m (lm/literal->lazy-map 
         {:a (do (println "resolved :a") "value :a")
          :b (do (println "resolved :b") "value :b")}))
 
@@ -53,7 +53,7 @@ forced until necessary:
 
 ```clojure
 
-(assoc (lm/lazy-map {}) :a 1 :b (delay 2))
+(assoc (lm/literal->lazy-map {}) :a 1 :b (delay 2))
 
 ; => {:a 1, :b <unrealized>}
 
@@ -66,7 +66,7 @@ entries have been made lazy as well:
 
 ```clojure
 
-(def m (lm/lazy-map 
+(def m (lm/literal->lazy-map 
         {:a (do (println "resolved :a") "value :a")
          :b (do (println "resolved :b") "value :b")}))
 
@@ -88,17 +88,11 @@ are taken as unrealized values:
 
 ```clojure 
 
-(lm/->LazyMap {:a 1 :b (delay 2)})
+(lm/lazy-map {:a 1 :b (delay 2)})
 
 ; => {:a 1, :b <unrealized>}
 
 ```
-
-You might prefer to use `->?LazyMap` instead of `->LazyMap`. The only
-difference is that `->?LazyMap` acts as the identity function if you
-pass it a map that is already lazy. This prevents nested lazy maps,
-which are not inherently wrong but which could be bad for performance
-if you nest them thousands of layers deep.
 
 There are also some utility functions for dealing with lazy maps. You
 can use `force-map` to compute all values in a lazy map. Alternatively, 
@@ -107,36 +101,33 @@ placeholder. Here is an illustration:
 
 ```clojure 
 
-(lm/force-map (lm/->LazyMap {:a (delay :foo) :b :bar}))
+(lm/force-map (lm/lazy-map {:a (delay :foo) :b :bar}))
 
 ; => {:a :foo, :b :bar}
 
 (lm/force-map
   (lm/freeze-map :quux
-     (lm/->LazyMap {:a (delay :foo) :b :bar})))
+     (lm/lazy-map {:a (delay :foo) :b :bar})))
 
 ; => {:a :quux, :b :bar}
 
 ```
 
-Finally, lazy maps will automatically avoid computing their values
+Finally, lazy maps will automatically avoid realizing their values
 when they are converted to strings using `str`, `pr-str`, and
 `print-dup`. Please see the [unit tests](./test/lazy_map/core_test.clj) 
 for more examples of the exact behavior of lazy maps.
 
-## See also
+## Comparisons
 
-**[Malabarba's implementation] of lazy maps in Clojure.**
-
-[Malabarba's implementation]: https://github.com/Malabarba/lazy-map-clojure
-
-Features unique to `malabarba/lazy-map`:
-
-* ClojureScript support
-* Transform Java classes into lazy maps (methods become keys)
-
-Features unique to `com.guaranteedrate/lazy-map`:
+Features unique to [com.guaranteedrate/lazy-map](https://github.com/Guaranteed-Rate/lazy-map):
 
 * More robust handling of laziness: all possible operations on maps
   are supported correctly (e.g. `seq` and `reduce-kv`)
-* Pretty string representation and support for pretty-printing
+* Pretty string representations that preserve laziness
+
+
+Features unique to [malabarba/lazy-map](https://github.com/Malabarba/lazy-map-clojure):
+
+* ClojureScript support
+* Transform Java classes into lazy maps (methods become keys)
