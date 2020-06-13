@@ -347,6 +347,9 @@
     "Rewrites form into a lazy construct."))
 
 (extend-protocol LazyRewrite
+  nil
+  (rewrite [form]
+    nil)
   Object
   (rewrite [form]
     form)

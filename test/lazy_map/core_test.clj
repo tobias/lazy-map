@@ -170,6 +170,9 @@
     (is (= (count (literal->lazy-map {})) 0))
     (is (lazy-map? (empty (literal->lazy-map {})))))
 
+  (testing "nil values are supported by literal->lazy-map macro"
+    (is (= nil (get (literal->lazy-map {:a nil}) :a))))
+
   (testing "literals are not wrapped in delays."
     (let [m (literal->lazy-map {:a :b})]
       (is (realized-at? m :a)))
