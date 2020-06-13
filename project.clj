@@ -1,4 +1,4 @@
-(defproject com.guaranteedrate/lazy-map "0.1.4-SNAPSHOT"
+(defproject com.guaranteedrate/lazy-map "0.1.4"
 
   :description
   "Lazy maps for Clojure"
