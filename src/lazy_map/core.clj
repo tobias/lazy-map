@@ -9,7 +9,10 @@
                          IPersistentCollection IMapIterable
                          ILookup IKVReduce IFn Associative
                          Sequential Reversible IPersistentVector
-                         IPersistentStack Indexed IMapEntry IHashEq MapEntry IPersistentSet IPersistentList APersistentMap$KeySeq PersistentList MapEquivalence APersistentMap)
+                         IPersistentStack Indexed IMapEntry IHashEq
+                         MapEntry IPersistentSet IPersistentList
+                         APersistentMap$KeySeq PersistentList MapEquivalence
+                         APersistentMap ISeq)
            (java.io Serializable))
   (:refer-clojure :exclude (merge)))
 
@@ -317,11 +320,22 @@
 (defmethod pp/simple-dispatch lazy_map.core.PlaceholderText [obj]
   (pr obj))
 
+(defn backport-seqable?
+  "Equivalent to clojure 1.9's seqable?"
+  [x]
+  (or (instance? ISeq x)
+      (instance? Seqable x)
+      (nil? x)
+      (instance? Iterable x)
+      (.isArray (class x))
+      (instance? CharSequence x)
+      (instance? Map x)))
+
 (defn dynamic-form? [x]
   (letfn [(quoted? [x]
             (and (seq? x) (= 'quote (first x))))
           (branch? [x]
-            (and (not (string? x)) (seqable? x) (not (quoted? x))))
+            (and (not (string? x)) (backport-seqable? x) (not (quoted? x))))
           (dynamic? [x]
             (or (var? x)
                 (symbol? x)
