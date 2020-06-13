@@ -1,8 +1,5 @@
 (ns lazy-map.core
-  "Main namespace, contains utility functions, type definitions, and
-  lazy map functions.
-
-  Public API is `->LazyMap`, `->?LazyMap`, `lazy-map`, `force-map`, `freeze-map`, `merge`, `deep-merge`."
+  "Maps that only realize their values when the value is accessed."
   (:require [clojure.pprint :as pp]
             [clojure.walk :as walk]
             [clojure.set :as sets])
@@ -12,9 +9,11 @@
                          IPersistentCollection IMapIterable
                          ILookup IKVReduce IFn Associative
                          Sequential Reversible IPersistentVector
-                         IPersistentStack Indexed IMapEntry IHashEq MapEntry IPersistentSet IPersistentList)
+                         IPersistentStack Indexed IMapEntry IHashEq MapEntry IPersistentSet IPersistentList APersistentMap$KeySeq PersistentList)
            (java.io Serializable))
   (:refer-clojure :exclude (merge)))
+
+(set! *warn-on-reflection* true)
 
 ;;;; Utility functions
 
@@ -108,7 +107,7 @@
 
   IPersistentCollection
   (count [this] 2)
-  (empty [this] false)
+  (empty [this] nil)
   (equiv [this o]
     (.equiv
       [key_ (force val_)]
@@ -210,9 +209,10 @@
 
   IMapIterable
   (keyIterator [this]
-    (.iterator
-      ^Iterable
-      (or (keys contents) ())))
+    (if-some [key-seq ^APersistentMap$KeySeq (keys (or contents {}))]
+      (.iterator key-seq)
+      (.iterator PersistentList/EMPTY)))
+
   (valIterator [this]
     (.iterator
       ;; Using the higher-arity form of map prevents chunking.
@@ -228,8 +228,7 @@
       (.count contents)
       0))
   (empty [this]
-    (or (not contents)
-        (.empty contents)))
+    (LazyMap. (.empty (or contents {}))))
   (cons [this o]
     (LazyMap. (.cons (or contents {}) o)))
   (equiv [this o]
@@ -270,7 +269,7 @@
 (defmethod pp/simple-dispatch lazy_map.core.LazyMap [obj]
   (pp/simple-dispatch (freeze-map (->PlaceholderText "<unrealized>") obj)))
 
-(defmethod pp/simple-dispatch lazy_map.core.LazyMapEntry [obj]
+(defmethod pp/simple-dispatch lazy_map.core.LazyMapEntry [^lazy_map.core.LazyMapEntry obj]
   (pp/simple-dispatch
     (let [raw-value (.val_ obj)]
       (map-entry (key obj) (if (and (delay? raw-value)
@@ -281,17 +280,16 @@
 (defmethod pp/simple-dispatch lazy_map.core.PlaceholderText [obj]
   (pr obj))
 
-;;;; Functions for working with lazy maps
-
-(defn ->?LazyMap
-  "Behaves the same as ->LazyMap, except that if m is already a lazy
-  map, returns it directly. This prevents the creation of a lazy map
-  wrapping another lazy map, which (while not terribly wrong) is not
-  the best idea."
-  [map]
-  (if (instance? LazyMap map)
-    map
-    (->LazyMap map)))
+(defn dynamic-form? [x]
+  (letfn [(quoted? [x]
+            (and (seq? x) (= 'quote (first x))))
+          (branch? [x]
+            (and (not (string? x)) (seqable? x) (not (quoted? x))))
+          (dynamic? [x]
+            (or (var? x)
+                (symbol? x)
+                (and (seq? x) (not (quoted? x)) (not (empty? x)))))]
+    (reduce (fn [nf x] (if (dynamic? x) (reduced true) nf)) false (tree-seq branch? seq x))))
 
 (defprotocol LazyRewrite
   (rewrite [form]
@@ -303,7 +301,11 @@
     form)
   MapEntry
   (rewrite [[k v]]
-    [(rewrite k) `(delay ~(rewrite v))])
+    [(rewrite k)
+     (let [v' (rewrite v)]
+       (if (dynamic-form? v')
+         (list `delay v')
+         v'))])
   IPersistentList
   (rewrite [form]
     (map rewrite form))
@@ -318,7 +320,38 @@
     `(->LazyMap (hash-map ~@(mapcat rewrite form)))))
 
 
-(defmacro lazy-map
+;;; BEGIN PUBLIC API
+
+(defn lazy-map?
+  "Is m a lazy map?"
+  [m]
+  (instance? lazy_map.core.LazyMap m))
+
+
+(defn lazy-map-entry?
+  "Is e a lazy map entry?"
+  [e]
+  (instance? lazy_map.core.LazyMapEntry e))
+
+
+(defn realized-at?
+  "Returns false if accessing k in m would cause a delay to execute."
+  [m k]
+  (if-some [v (find m k)]
+    (if (lazy-map-entry? v)
+      (or (not (delay? (.val_ ^lazy_map.core.LazyMapEntry v)))
+          (realized? (.val_ ^lazy_map.core.LazyMapEntry v)))
+      true)
+    true))
+
+
+(defn lazy-map
+  "Constructs a lazy map from a map that may contain delays for values."
+  ([] (->LazyMap {}))
+  ([m] (if (lazy-map? m) m (->LazyMap m))))
+
+
+(defmacro literal->lazy-map
   "Constructs a lazy map from a literal map. None of the values are
   evaluated until they are accessed from the map. Recursively converts
   any nested inline maps as well."
@@ -331,10 +364,11 @@
   [map]
   (walk/postwalk
     (fn [form]
-      (if (map? form)
+      (if (lazy-map? form)
         (into {} form)
         form))
     map))
+
 
 (defn freeze-map
   "Replace all the unrealized values in a lazy map with placeholders,
@@ -355,35 +389,92 @@
 
 
 (defn merge
-  "Merges two lazy maps. Preserves laziness of value access."
-  [m1 m2]
-  (letfn [(value [k]
+  "Merges maps. Preserves laziness of unrealized values in lazy maps."
+  [& maps]
+  (letfn [(value [m1 m2 k]
             (case [(contains? m1 k) (contains? m2 k)]
-              [true true] (if-some [v (get m2 k)] v (get m1 k))
-              [true false] (get m1 k)
-              [false true] (get m2 k)
-              [false false] nil))]
-    (->> (sets/union (keys m1) (keys m2))
-         (into {} (map (fn [k] [k (delay (value k))])))
-         (->LazyMap))))
+              ([true true] [false true])
+              (if (realized-at? m2 k)
+                (get m2 k)
+                (delay (get m2 k)))
+
+              [true false]
+              (if (realized-at? m1 k)
+                (get m1 k)
+                (delay (get m1 k)))
+
+              [false false] nil))
+
+          (inner-merge [m1 m2]
+            (->> (sets/union (keys m1) (keys m2))
+                 (into {} (map (fn [k] [k (value m1 m2 k)])))
+                 (->LazyMap)))]
+
+    (reduce inner-merge (->LazyMap {}) (remove empty? maps))))
 
 
 (defn deep-merge
-  "Deep merges two lazy maps. Preserves laziness of value access."
-  [m1 m2]
-  (letfn [(value [k]
+  "Deep merges maps. Preserves laziness of unrealized values in lazy maps."
+  [& maps]
+  (letfn [(value [m1 m2 k]
+
             (case [(contains? m1 k) (contains? m2 k)]
-              [true true] (if-some [m2v (get m2 k)]
-                            (if (map? m2v)
-                              (let [m1v (get m1 k)]
-                                (if (map? m1v)
-                                  (deep-merge m1v m2v)
-                                  m2v))
-                              m2v)
-                            (get m1 k))
-              [true false] (get m1 k)
-              [false true] (get m2 k)
-              [false false] nil))]
-    (->> (sets/union (keys m1) (keys m2))
-         (into {} (map (fn [k] [k (delay (value k))])))
-         (->LazyMap))))
+
+              ; exists in both maps
+              [true true]
+
+              (case [(realized-at? m1 k) (realized-at? m2 k)]
+
+                ; is already realized in both maps
+                ; just access and merge if necessary.
+                [true true]
+                (let [m2v (get m2 k)]
+                  (if (map? m2v)
+                    (let [m1v (get m1 k)]
+                      (if (map? m1v)
+                        (inner-merge m1v m2v)
+                        m2v))
+                    m2v))
+
+                ; k is realized in m2 but not in m1. if entry in m2 is not a recursive
+                ; deep-merge candidate then we can just return eagerly. otherwise,
+                ; delay realizing the value in m1 so we merge on demand instead.
+                [false true]
+                (let [m2v (get m2 k)]
+                  (if (map? m2v)
+                    (delay
+                      (let [m1v (get m1 k)]
+                        (if (map? m1v)
+                          (inner-merge m1v m2v)
+                          m2v)))
+                    m2v))
+
+                ; is not realized in m2 yet, we have to delay accessing any of it.
+                ([true false] [false false])
+                (delay
+                  (let [m2v (get m2 k)]
+                    (if (map? m2v)
+                      (let [m1v (get m1 k)]
+                        (if (map? m1v)
+                          (inner-merge m1v m2v)
+                          m2v))
+                      m2v))))
+
+              [true false]
+              (if (realized-at? m1 k)
+                (get m1 k)
+                (delay (get m1 k)))
+
+              [false true]
+              (if (realized-at? m2 k)
+                (get m2 k)
+                (delay (get m2 k)))
+
+              [false false] nil))
+
+          (inner-merge [m1 m2]
+            (->> (sets/union (keys m1) (keys m2))
+                 (into {} (map (fn [k] [k (value m1 m2 k)])))
+                 (->LazyMap)))]
+
+    (reduce inner-merge (->LazyMap {}) (remove empty? maps))))
