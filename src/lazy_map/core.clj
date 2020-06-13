@@ -385,7 +385,7 @@
 (defn lazy-map
   "Constructs a lazy map from a map that may contain delays for values."
   ([] (->LazyMap {}))
-  ([m] (if (lazy-map? m) m (->LazyMap m))))
+  ([m] (if (lazy-map? m) m (->LazyMap (or m {})))))
 
 
 (defmacro literal->lazy-map
