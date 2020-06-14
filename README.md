@@ -4,13 +4,17 @@
 
 > Maps that satisfy Clojure's map interactions but delay computing their values until the value is accessed.
 
-## Summary
+### Summary
 
 This library provides a new Clojure data type, the *lazy map*. Lazy
 maps act just like regular (persistent) maps, except that their values
-are not computed until they are requested.
+are not computed until they are requested. Please see the 
+[unit tests](./test/lazy_map/core_test.clj) for examples of the 
+exact behavior of lazy maps.
 
-## Usage
+---
+
+### Usage
 
 Start by requiring the namespace:
 
@@ -94,31 +98,100 @@ are taken as unrealized values:
 
 ```
 
-There are also some utility functions for dealing with lazy maps. You
-can use `force-map` to compute all values in a lazy map. Alternatively, 
-you can use `freeze-map` to replace all the unrealized values with a 
-placeholder. Here is an illustration:
+--- 
+
+### Utility Functions
+
+There are also some utility functions for dealing with lazy maps.
+
+`merge` - merges two lazy maps and preserves their laziness.
 
 ```clojure 
 
-(lm/force-map (lm/lazy-map {:a (delay :foo) :b :bar}))
+(def a (lm/lazy-map {:a (delay (+ 1 2 3)) :b :b-val}))
+; => #'user/a
+(def b (lm/lazy-map {:a (delay (+ 4 5)) :c :c-val}))
+; => #'user/b
+(def merged (lm/merge a b))
+; => #'user/merged
+a 
+; => {:a <unrealized>, :b :b-val}
+b
+; => {:a <unrealized>, :c :c-val}
+merged
+; => {:c :c-val, :a <unrealized>, :b :b-val}
+(get merged :a)
+; => 9
+
+```
+
+`deep-merge` - deep merges two lazy maps and preserves their laziness.
+
+```clojure 
+
+(def one (lm/literal->lazy-map 
+         {:a {:c (+ 1 2 3)}
+          :b {:d (+ 5 6 7)}}))
+; => #'user/one
+(def two (lm/literal->lazy-map
+           {:a {:c "cccc"}
+            :b {:e "eeee"}}))
+; => #'user/two
+(def merged (lm/deep-merge one two))
+; => #'user/merged
+one
+; => {:b <unrealized>, :a <unrealized>}
+two
+; => {:b <unrealized>, :a <unrealized>}
+merged
+; => {:a <unrealized>, :b <unrealized>}
+(get merged :a)
+; => {:c "cccc"}
+(get merged :b)
+; => {:e "eeee", :d <unrealized>}
+(get-in merged [:b :d])
+; => 18
+one
+; => {:b {:d 18}, :a {:c <unrealized>}}
+two
+; => {:b {:e "eeee"}, :a {:c "cccc"}}
+
+```
+
+
+`force-map` - realizes all lazy values in a map.
+
+```clojure 
+
+(lm/force-map 
+  (lm/lazy-map {:a (delay :foo) :b :bar}))
 
 ; => {:a :foo, :b :bar}
 
-(lm/force-map
-  (lm/freeze-map :quux
-     (lm/lazy-map {:a (delay :foo) :b :bar})))
+```
+
+`freeze-map` - replace all unrealized values in a map.
+
+```clojure
+
+(lm/freeze-map :quux 
+  (lm/lazy-map {:a (delay :foo) :b :bar}))
 
 ; => {:a :quux, :b :bar}
 
 ```
 
-Finally, lazy maps will automatically avoid realizing their values
-when they are converted to strings using `str`, `pr-str`, and
-`print-dup`. Please see the [unit tests](./test/lazy_map/core_test.clj) 
-for more examples of the exact behavior of lazy maps.
+---
 
-## Comparisons
+### Serialization
+
+Lazy maps automatically avoid realizing their values when they are converted 
+to strings using `str`, `pr-str`, or `print-dup` and instead will display 
+`<unrealized>` placeholders.
+
+---
+
+### Comparisons
 
 Features unique to [com.guaranteedrate/lazy-map](https://github.com/Guaranteed-Rate/lazy-map):
 
