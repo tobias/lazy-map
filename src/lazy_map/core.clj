@@ -358,7 +358,9 @@
     [(rewrite k)
      (let [v' (rewrite v)]
        (if (dynamic-form? v')
-         (list `delay v')
+         (if (and (seq? v') (= 'lazy-map.core/->LazyMap (first v')))
+           v'
+           (list `delay v'))
          v'))])
   IPersistentList
   (rewrite [form]
@@ -402,7 +404,19 @@
 (defn lazy-map
   "Constructs a lazy map from a map that may contain delays for values."
   ([] (->LazyMap {}))
-  ([m] (if (lazy-map? m) m (->LazyMap (or m {})))))
+  ([m]
+   ((fn lazy-one [m]
+      (if (lazy-map? m)
+        m
+        (->LazyMap
+          (reduce-kv
+            (fn [agg k v]
+              (if (map? v)
+                (assoc agg k (lazy-one v))
+                (assoc agg k v)))
+            {}
+            (or m {})))))
+    m)))
 
 
 (defmacro literal->lazy-map
@@ -430,16 +444,15 @@
   the values in the original map will not be forced. v can be an
   object to use for all the values or a function of the key."
   [val map]
-  (let [val (if (fn? val)
-              val
-              (constantly val))]
-    (reduce-kv (fn [m k v]
-                 (assoc m k (if (and (delay? v)
-                                     (not (realized? v)))
-                              (val k)
-                              (force v))))
-               {}
-               (.contents ^LazyMap map))))
+  (let [val (if (fn? val) val (constantly val))]
+    ((fn freeze-one [m]
+       (reduce-kv
+         (fn [m k v]
+           (let [new-v (if (and (delay? v) (not (realized? v))) (val k) (force v))]
+             (assoc m k (if (lazy-map? new-v) (freeze-one new-v) new-v))))
+         {}
+         (if (lazy-map? m) (.contents ^LazyMap m) m)))
+     map)))
 
 
 (defn merge

@@ -118,6 +118,10 @@ merged
 ; => {:c :c-val, :a <unrealized>, :b :b-val}
 (get merged :a)
 ; => 9
+one
+; => {:a <unrealized>, :b :b-val}
+two
+; => {:a 9, :c :c-val}
 
 ```
 
