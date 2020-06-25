@@ -31,6 +31,7 @@ You can then construct a lazy map using the `literal->lazy-map` macro.
 (def m (lm/literal->lazy-map 
         {:a (do (println "resolved :a") "value :a")
          :b (do (println "resolved :b") "value :b")}))
+; => #'user/m
 ; => {:a <unrealized>, :b <unrealized>}
 
 ```
@@ -70,8 +71,7 @@ entries have been made lazy as well:
 (def m (lm/literal->lazy-map 
         {:a (do (println "resolved :a") "value :a")
          :b (do (println "resolved :b") "value :b")}))
-
-; => #'lazy-map.core/m
+; => #'user/m
 (dorun m)
 ; => nil
 (keys m)
@@ -186,6 +186,14 @@ Replace all unrealized values in a map.
 ; => {:a :quux, :b :bar}
 
 ```
+
+
+Others laziness preserving variants of common functions:
+- `select-keys`
+- `map-keys`
+- `map-vals`
+- `filter-keys`
+
 
 ---
 

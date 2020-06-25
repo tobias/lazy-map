@@ -14,7 +14,7 @@
                          APersistentMap$KeySeq PersistentList MapEquivalence
                          APersistentMap ISeq)
            (java.io Serializable))
-  (:refer-clojure :exclude (merge)))
+  (:refer-clojure :exclude (merge select-keys)))
 
 (set! *warn-on-reflection* true)
 
@@ -375,6 +375,12 @@
   (rewrite [form]
     `(->LazyMap (hash-map ~@(mapcat rewrite form)))))
 
+(defn- reduce-kv* [f init coll]
+  (if (satisfies? clojure.core.protocols/IKVReduce coll)
+    (reduce-kv f init coll)
+    (reduce (fn [agg [k v]] (f agg k v)) init coll)))
+
+
 
 ;;; BEGIN PUBLIC API
 
@@ -436,6 +442,64 @@
         (into {} form)
         form))
     map))
+
+
+(defn unwrap
+  "If m is a lazy map, it returns it in unwrapped form. Else, returns m."
+  [m]
+  (if (lazy-map? m)
+    (.-contents ^lazy_map.core.LazyMap m)
+    m))
+
+
+(defn fmap
+  "Applies a function to a map. If it's a lazy map it unwraps it,
+   applies the function, then wraps it up again."
+  [m f & args]
+  (if (lazy-map? m)
+    (lazy-map (apply f (unwrap m) args))
+    (apply f m args)))
+
+
+(defn select-keys
+  "Same as clojure.core/select-keys but doesn't realize lazy values."
+  [m keyseq]
+  (fmap m clojure.core/select-keys keyseq))
+
+
+(defn filter-keys
+  "Filters the map according to a predicate of the keys."
+  [pred m]
+  (fmap m (fn [m'] (into {} (filter (comp pred key)) m'))))
+
+
+(defn remove-keys
+  "Removes the map entries that match a predicate of the keys."
+  [pred m]
+  (filter-keys (complement pred) m))
+
+
+(defn map-keys
+  "Applies f to every key in m. Preserves laziness of values in m."
+  [f m]
+  (fmap m (fn [m']
+            (persistent!
+              (reduce-kv*
+                (fn [m'' k v] (assoc! m'' (f k) v))
+                (transient (empty m'))
+                m')))))
+
+
+(defn map-vals
+  "Stages applying f to every val in m without realizing any."
+  [f m]
+  (fmap m (fn [m']
+            (persistent!
+              (reduce-kv*
+                (fn [m'' k v]
+                  (assoc! m'' k (delay (f (force v)))))
+                (transient (empty m'))
+                m')))))
 
 
 (defn freeze-map

@@ -2,7 +2,7 @@
   (:require [lazy-map.core :refer :all]
             [clojure.test :refer :all]
             [clojure.pprint :as pp])
-  (:refer-clojure :exclude (merge))
+  (:refer-clojure :exclude (merge select-keys))
   (:import (java.util Map)))
 
 (defmacro error
@@ -346,3 +346,61 @@
       (is (= :e2 (get-in merged [:d :e])))
       (is (= [{:g :g1 :e :e1}] @effects))
       (is (= :g1 (get-in merged [:d :g]))))))
+
+(deftest map-keys-test
+  (let [effects (atom [])
+        !       (fn [x] (swap! effects conj x) x)
+        m1      (literal->lazy-map {:a (! :a1) :b (! :b1)})
+        m2      (map-keys name m1)]
+    (is (not (realized-at? m1 :a)))
+    (is (not (realized-at? m2 "a")))
+    (is (not (realized-at? m1 :b)))
+    (is (not (realized-at? m2 "b")))
+    (= (get m2 "a") :a1)
+    (is (realized-at? m1 :a))
+    (is (realized-at? m2 "a"))
+    (is (not (realized-at? m1 :b)))
+    (is (not (realized-at? m2 "b")))))
+
+(deftest map-vals-test
+  (let [effects (atom [])
+        !       (fn [x] (swap! effects conj x) x)
+        m1      (literal->lazy-map {:a (! :a1) :b (! :b1)})
+        m2      (map-vals name m1)]
+    (is (not (realized-at? m1 :a)))
+    (is (not (realized-at? m2 :a)))
+    (is (not (realized-at? m1 :b)))
+    (is (not (realized-at? m2 :b)))
+    (= (get m2 :a) "a1")
+    (is (realized-at? m1 :a))
+    (is (realized-at? m2 :a))
+    (is (not (realized-at? m1 :b)))
+    (is (not (realized-at? m2 :b)))))
+
+(deftest select-keys-test
+  (let [effects (atom [])
+        !       (fn [x] (swap! effects conj x) x)
+        m1      (literal->lazy-map {:a (! :a1) :b (! :b1)})
+        m2      (select-keys m1 [:a])]
+    (is (not (realized-at? m1 :a)))
+    (is (not (realized-at? m1 :b)))
+    (is (not (realized-at? m2 :a)))
+    (= (get m2 :a) :a1)
+    (is (realized-at? m1 :a))
+    (is (realized-at? m2 :a))
+    (is (not (realized-at? m1 :b)))
+    (is (not (contains? m2 :b)))))
+
+(deftest filter-keys-test
+  (let [effects (atom [])
+        !       (fn [x] (swap! effects conj x) x)
+        m1      (literal->lazy-map {:a (! :a1) :b (! :b1)})
+        m2      (filter-keys #{:a} m1)]
+    (is (not (realized-at? m1 :a)))
+    (is (not (realized-at? m1 :b)))
+    (is (not (realized-at? m2 :a)))
+    (= (get m2 :a) :a1)
+    (is (realized-at? m1 :a))
+    (is (realized-at? m2 :a))
+    (is (not (realized-at? m1 :b)))
+    (is (not (contains? m2 :b)))))
