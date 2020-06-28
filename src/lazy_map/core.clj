@@ -373,7 +373,7 @@
     (into [] (map rewrite) form))
   Map
   (rewrite [form]
-    `(->LazyMap (hash-map ~@(mapcat rewrite form)))))
+    `(->LazyMap ~(apply hash-map (mapcat rewrite form)))))
 
 (defn- reduce-kv* [f init coll]
   (if (satisfies? clojure.core.protocols/IKVReduce coll)
