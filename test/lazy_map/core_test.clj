@@ -404,3 +404,7 @@
     (is (realized-at? m2 :a))
     (is (not (realized-at? m1 :b)))
     (is (not (contains? m2 :b)))))
+
+(deftest lazy-map-meta-test
+  (let [m (literal->lazy-map {})]
+    (is (= {:meta :data} (meta (with-meta m {:meta :data}))))))

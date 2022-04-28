@@ -7,7 +7,7 @@
            (java.util Map RandomAccess Map$Entry)
            (clojure.lang Seqable IPersistentMap
                          IPersistentCollection IMapIterable
-                         ILookup IKVReduce IFn Associative
+                         ILookup IKVReduce IObj IFn Associative
                          Sequential Reversible IPersistentVector
                          IPersistentStack Indexed IMapEntry IHashEq
                          MapEntry IPersistentSet IPersistentList
@@ -259,6 +259,13 @@
              (force v))
            contents
            (repeat nil))))
+
+  IObj
+  (meta [this]
+    (:metadata this))
+
+  (withMeta [this metadata]
+    (assoc this :metadata metadata))
 
   IPersistentCollection
   (count [this]
