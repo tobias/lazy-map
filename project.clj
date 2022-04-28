@@ -1,10 +1,10 @@
-(defproject com.guaranteedrate/lazy-map "0.1.8-SNAPSHOT"
+(defproject org.clojars.tcrawley/lazy-map "0.1.8-SNAPSHOT"
 
   :description
   "Lazy maps for Clojure"
 
   :url
-  "https://github.com/Guaranteed-Rate/lazy-map"
+  "https://github.com/tobias/lazy-map/tree/fork-release"
 
   :license
   {:name "Eclipse Public License"
