@@ -1,4 +1,4 @@
-(defproject org.clojars.tcrawley/lazy-map "0.1.8-SNAPSHOT"
+(defproject org.clojars.tcrawley/lazy-map "0.1.8"
 
   :description
   "Lazy maps for Clojure"
